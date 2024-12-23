@@ -1,0 +1,650 @@
+---
+title: "Garment Workers Productivity"
+output: html_document
+date: "2023-11-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## LOADING THE REQUIRED LIBRARIES
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(corrplot)
+library(plotly)
+```
+
+## IMPORTING DATASET
+
+```{r}
+garment_prod <-read.csv("garment_prod.csv")
+```
+
+```{r}
+head(garment_prod)
+```
+
+## DATASET SUMMARY
+
+```{r}
+summary(garment_prod)
+```
+
+## DATA PREPORCESSING & CLEANING
+
+```{r}
+unique(garment_prod$department)
+```
+
+```{r}
+# Replace 'sweing' with 'sewing'
+garment_prod$department[garment_prod$department == 'sweing'] <- 'sewing'
+
+# Replace 'finishing ' with 'finishing' (note the extra space in 'finishing ')
+garment_prod$department[garment_prod$department == 'finishing '] <- 'finishing'
+
+# Display unique values in the "department" column
+unique(garment_prod$department)
+
+```
+
+```{r}
+sum(is.na(garment_prod))
+```
+
+```{r}
+colSums(is.na(garment_prod))
+```
+
+As wip (work_in_progress) has a high proportion of NaN values, we fill the cell as 0 i.e., there is no item currently being worked on.
+
+```{r}
+garment_prod[is.na(garment_prod)] <- 0
+colSums(is.na(garment_prod))
+```
+
+## EDA & VISUALIZATION
+
+For the exploratory data analysis and visualization, various types of charts were constructed and plotted to get a better understanding on the variables of our data as well as the relationship between them.
+
+### Targeted Productivity over Time
+
+```{r}
+### Targeted Productivity over Time
+dates <- aggregate(garment_prod$targeted_productivity, by=list(garment_prod$date), mean)$Group.1
+targeted_productivity <- aggregate(garment_prod$targeted_productivity, by=list(garment_prod$date), mean)$x
+
+plot_ly(
+  x = dates, 
+  y = targeted_productivity,
+  type = "scatter",
+  mode = "lines" 
+) |> 
+layout(
+  yaxis = list(range = c(0.65, 0.81), title = 'Targeted Productivity'), 
+  xaxis = list(title = 'Date'),
+  title = list(text = 'Targeted Productivity over Time', y = 0.95, x = 0.5, xanchor = 'center', yanchor = 'top')
+)
+```
+
+### Actual Productivity over Time
+
+```{r}
+### Actual Productivity over Time
+dates <- aggregate(garment_prod$actual_productivity, by=list(garment_prod$date), mean)$Group.1
+actual_productivity <- aggregate(garment_prod$actual_productivity, by=list(garment_prod$date), mean)$x
+
+plot_ly(
+  x = dates, 
+  y = actual_productivity,
+  type = "scatter",
+  mode = "lines" 
+) |> 
+  layout(
+  yaxis = list(range = c(0.65, 0.81), title = 'ActualProductivity'), 
+  xaxis = list(title = 'Date'),
+  title = list(text = 'Actual Productivity over Time', y = 0.95, x = 0.5, xanchor = 'center', yanchor = 'top')
+)
+
+```
+
+### Actual & Targeted productivity over Time
+
+```{r}
+### Actual & Targeted Productivity over Time
+plot_ly(
+  x = dates, 
+  y = targeted_productivity,
+  type = "scatter",
+  mode = "lines",
+  name = "targeted_productivity"
+) %>% 
+add_trace(y = actual_productivity, name = "actual_productivity") %>% 
+layout(legend = list(x = 0.73, y = 0.95), 
+       xaxis = list(title = 'Date'),
+       title = list(text='Actual & Targeted Productivity over Time', y = 0.95, x = 0.5, xanchor = 'center', yanchor =  'top'))
+```
+
+We can observe the same in the graph above whereby the actual productivity had a big difference from 25th January to 8th February. There was a massive drop from 8th February to 8th March in the actual productivity but however, the targeted productivity was still raging at a moderate level. Therefore, we can still assume that the actual productivity is higher than the targeted productivity based on the graph. Although the actual productivity seems to be more volatile compared to the targeted productivity, the graph gives us a clear indication that the actual productivity was higher than the targeted productivity on many occasions within the timeframe.
+
+### Productivity Difference over Time
+
+```{r}
+### Productivity difference (Actual Productivity - Targeted Productivity) over Time
+prod_diff = actual_productivity - targeted_productivity
+prod_diff
+
+```
+
+```{r}
+plot_ly(
+  x = dates, 
+  y = prod_diff,
+  type = "scatter",
+  mode = "lines" 
+) |> 
+layout(title = list(text='Productivity Difference over Time', 
+                    xaxis = list(title = 'Date'),
+                    yaxis = list(title = 'Productivity difference'),
+                    y = 0.95, x = 0.5, xanchor = 'center', yanchor =  'top'))
+```
+
+### Distribution of Work in Progress vs day of the week
+
+```{r}
+data_frame_wip <- subset(garment_prod, wip > 0)
+nrow(data_frame_wip)
+```
+
+```{r}
+result <- aggregate(data_frame_wip$wip, by=list(data_frame_wip$day), mean)
+result
+```
+
+```{r}
+barplot(result$x, names.arg=result$Group.1, xlab="Weekdays", ylab="Total Work in Progress", col=rainbow(6), main="Total Work in Progress by Weekdays",border="black")
+```
+
+### Quarter vs Overtime
+
+```{r}
+df_ot <- garment_prod
+result <- aggregate(df_ot$over_time, by=list(df_ot$quarter), mean)
+result
+```
+
+```{r}
+barplot(result$x, names.arg=result$Group.1, xlab="Quarter", ylab="Average Worktime", col=rainbow(6),
+        main="Quarter vs Overtime",border="black")
+
+```
+
+### Actual Productivity by Department
+
+```{r}
+# Actual productivity vs Department
+# Create means for departments
+dept_means <- garment_prod %>% 
+  group_by(department) %>%
+  summarise(avg_prod = mean(actual_productivity))
+
+# Define custom colors for each department
+custom_colors <- c("#1f78b4", "#33a02c", "#e31a1c", "#ff7f00", "#6a3d9a")
+
+# Plot graph with custom colors
+ggplot(dept_means, aes(x = department, y = avg_prod, fill = department)) +
+  geom_col() +
+  scale_fill_manual(values = custom_colors) +  # Set custom colors
+  labs(title = "Average Actual Productivity by Department",
+       x = "Department",
+       y = "Avg. Actual Productivity") +
+  theme_bw()
+```
+
+### Team & Overtime
+
+```{r}
+result <- aggregate(df_ot$over_time, by=list(df_ot$team), mean)
+result
+
+```
+
+```{r}
+barplot(result$x, names.arg=result$Group.1, xlab="Team", ylab="Average Overtime", col=rainbow(12),
+        main="Team vs Overtime",border="black")
+```
+
+### Quarter vs Department
+
+```{r}
+counts <- table(garment_prod$department,garment_prod$quarter)
+barplot(counts, main="Quarter vs Department",
+        xlab="Number of Departments", col=c("pink","lightblue"),
+        legend = rownames(counts))
+```
+
+### Distribution plot for Numeric variables
+
+```{r}
+box_df <- data.frame(garment_prod$targeted_productivity, garment_prod$smv, garment_prod$wip, garment_prod$over_time, garment_prod$incentive, garment_prod$idle_time, garment_prod$idle_men, garment_prod$no_of_style_change, garment_prod$no_of_workers, garment_prod$actual_productivity)
+
+col <- c("targeted_productivity", "standard_minute_value", 
+         "work_in_progress", "over_time", "incentive", "idle_time", "idle_men", "no_of_style_change", 
+         "no_of_workers", "actual_productivity")
+
+colnames(box_df) <- col
+
+ggplot(gather(box_df), aes(key,value)) +
+  geom_boxplot(color="black", fill="red") +
+  facet_wrap(~key, scales="free") +
+  labs(title = "Box plots showing the distribution of all numeric variables")
+
+```
+
+```{r}
+par(mfrow = c(1, 1))
+
+# Plot a histogram or bar chart of each numeric variable
+ggplot(gather(box_df), aes(value)) +
+  geom_histogram(bins=20,color='blue', fill='purple') +
+  facet_wrap(~key, scales = 'free') +
+  labs(title = "Histograms showing the distribution of all variables", 
+       subtitle ="except the first 3 categorical variables")
+
+```
+
+According to the diagram above, the overtime boxplot comparatively is smaller than the others. This suggests that over time did not really contribute to the garment productivity. On the other hand, the number of workers boxplot comparatively is larger than the others. This suggests that the number of workers played an important role in the garment productivity. Moreover, if one were to compare the median of the targeted productivity and actual productivity, it can be observed that the actual productivity has a slightly higher median compared to the targeted productivity. Therefore, just by looking at this box-plot it can be inferred that the actual productivity was more than the targeted productivity. It can be observed the same in Figure showing the Line graph of "Actual and Targeted Productivity over Time" whereby the actual productivity had a big difference from 25th January to 8th February.
+
+## IMPACT OF OVERTIME AND INCENTIVES OVER PRODUCTIVITY
+
+**"How does overtime and incentive distribution influence targeted productivity in the garment industry? Are there optimal levels for maximizing efficiency?"**
+
+## Hypothesis testing
+
+H0: Overtime hours and incentive provided have no effect on actual productivity.
+
+Ha: Overtime hours and incentives have a positive correlation with actual productivity.
+
+### Correlation analysis
+
+```{r}
+cor_matrix <- cor(garment_prod[,c("over_time", "incentive", "actual_productivity")])
+print(cor_matrix)
+```
+
+1.  **Overtime and Incentive:**
+
+    -   The correlation coefficient between overtime and incentive is approximately -0.0048. This value is very close to zero, indicating a very weak negative correlation. In other words, there is almost no linear relationship between overtime and incentive in the dataset.
+
+2.  **Overtime and Actual Productivity:**
+
+    -   The correlation coefficient between overtime and actual productivity is approximately -0.0542. This value suggests a weak negative correlation. While there is a negative association, it is not very strong. It implies that as overtime increases, there is a slight tendency for actual productivity to decrease, but the relationship is not highly pronounced.
+
+3.  **Incentive and Actual Productivity:**
+
+    -   The correlation coefficient between incentive and actual productivity is approximately 0.0765. This value indicates a weak positive correlation. It suggests that there is a slight tendency for higher incentives to be associated with higher actual productivity, but again, the relationship is not very strong.
+
+### Linear Model
+
+```{r}
+model <- lm(actual_productivity ~ over_time + incentive, data = garment_prod)
+summary(model)
+```
+
+Interpretation:
+
+-   The intercept is highly significant (p-value \< 2e-16), indicating that the model is significant when both predictors are zero.
+
+-   The coefficients for **`over_time`** and **`incentive`** are not exactly zero, but their p-values are close to the conventional significance level of 0.05.
+
+-   The model explains a small amount of the variability in actual_productivity (Multiple R-squared is low).
+
+-   The F-statistic is significant (p-value = 0.005243), suggesting that the model as a whole is statistically significant.
+
+Inference:
+
+-   The overall model is statistically significant, but the contribution of individual predictors (**`over_time`** and **`incentive`**) is not very strong.
+
+-   The low R-squared values suggest that the linear model may not be a good fit for explaining the variation in actual_productivity.
+
+-   The p-values for individual predictors are close to the significance level, so caution should be exercised in drawing strong conclusions about the individual effects of **`over_time`** and **`incentive`**.
+
+-   The residual standard error provides a measure of how well the model fits the data; a lower value indicates a better fit.
+
+### Visualization
+
+```{r}
+ggplot(garment_prod, aes(x = over_time, y = actual_productivity)) +
+  geom_point() +
+  geom_smooth(method="lm")
+```
+
+Interpretation: Overtime shows diminishing returns
+
+1.  Initially, additional overtime leads to significant gains in productivity as workers put in extra effort to complete more output. This positive linear relationship is evident in the upward slope at first.
+
+2.  However, as overtime increases, the marginal gain in productivity starts decreasing. This is seen in the curve tapering off and the slope becoming nearly flat at very high overtime levels.
+
+3.  Physically and mentally there seems to be an upper limit where workers experience fatigue and cannot sustain the heightened productivity indefinitely.
+
+4.  The peak productivity seems to be achieved in the 5000-7000 hours of overtime range after which it actually drops due to employee exhaustion and inefficiency.
+
+5.  Optimal managerial policy would be to cap overtime hours to an upper ceiling of 7000 hours per quarter to maximize productivity. More lax quotas may not sufficiently motivate extra effort, while more extreme quotas risk burnout and downward performance.
+
+6.  This analysis demonstrates the value of visualizing relationships rather than relying only on correlation coefficients. The non-linear association of overtime with productivity is readily apparent but would not be captured by a single correlation statistic.
+
+```{r}
+ggplot(garment_prod, aes(x = incentive, y = actual_productivity)) +
+  geom_point() + 
+  geom_smooth(method="lm")
+```
+
+Interpretation: Incentives show mostly linear positive trend.
+
+The graph shows that the `actual_productivity` of the garment increases as the `incentive` increases. This is likely because employees are motivated to work harder when they are offered a greater incentive.
+
+1.  We see a predominantly positive linear correlation between incentives and actual productivity. As the incentive amount increases, workers' productivity measured in units produced also rises.
+
+2.  The plot shows this relationship to be largely linear, with no clear diminishing returns effect unlike overtime. Productivity continues improving as incentives increase without a tapering off.
+
+3.  This suggests that incentivizing workers up to the highest observed levels (around 100 units) could maximize productivity. There is no clear "peak" beyond which productivity drops.
+
+4.  We can infer that financial incentives are an effective motivational tool for garment workers. Higher bonus pay directly maps to higher efficiency and output.
+
+5.  However, providing incentives does become progressively more expensive for the organization. So management should balance productivity gains with overall profitability.
+
+    The main takeaway for management would be that incentive programs could be expanded more aggressively if budgets allow, but overtime should be capped based on observed diminishing returns trade-off.
+
+### ANOVA test
+
+```{r}
+anova(model)
+```
+
+**Interpretation:**
+
+-   For **`over_time`**, the p-value (0.060174) is greater than the conventional significance level of 0.05. Therefore, we do not have enough evidence to reject the null hypothesis that there is no effect of **`over_time`** on **`actual_productivity`** at the 0.05 significance level.
+
+-   For **`incentive`**, the p-value (0.008219) is less than 0.05. Therefore, we have enough evidence to reject the null hypothesis that there is no effect of **`incentive`** on **`actual_productivity`** at the 0.05 significance level.
+
+-   The results suggest that there is a statistically significant effect of **`incentive`** on **`actual_productivity`**, but the evidence for the effect of **`over_time`** is not strong enough to reach statistical significance at the 0.05 level.
+
+### Optimum conditions for efficiency
+
+```{r}
+overtime_data <- garment_prod %>% 
+  filter(over_time > 0) %>% 
+  mutate(productivity_gain = actual_productivity - targeted_productivity)
+View(overtime_data)
+```
+
+```{r}
+overtime_data %>% 
+  ggplot(aes(x = over_time, y = productivity_gain)) +
+  geom_point() 
+```
+
+1.  It clearly shows the diminishing marginal returns of overtime on productivity, from a different angle. Rather than absolute productivity, we look at gains over targeted productivity.
+
+2.  Initially, up to approximately 5000 hours of overtime, the productivity gain from additional overtime hours is positive and quite steep. Each extra overtime hour contributes significantly to surpassing targeted output.
+
+3.  However, the curve peaks at about 5000-7000 overtime hours after which the marginal gain starts dropping sharply. Additional overtime beyond 7000 hours gives weaker and weaker productivity returns.
+
+4.  We can pinpoint the "sweet spot" of overtime to be around 5000-7000 hours per quarter. This allows workers to stretch themselves to beat productivity targets without hitting fatigue.
+
+5.  The peak and downward slope mirrors the flattening of the absolute productivity curve. Together they indicate clear symptoms of exhaustion and inefficiency from extreme overtime.
+
+6.  Management policy should regulate overtime quotas to maximize total productivity gain over targeted benchmarks. Roughly 5000-7000 hours provides the optimization based on this visualization.
+
+## IMPACT OF IDLE TIME AND IDLE MEN ON PRODUCTIVITY
+
+**"How does the amount of idle time and idle men affect overall productivity? Are there opportunities to reduce idle time for improved efficiency?"**
+
+## Hypothesis testing
+
+H0: Idle time and idle men have no correlation with actual productivity.
+
+Ha: Increasing idle time and idle men decreases actual productivity.
+
+### Correlation analysis
+
+```{r}
+cor_matrix_2 <- cor(garment_prod[, c("idle_time", "idle_men", "actual_productivity")])
+print(cor_matrix_2)
+```
+
+1.  **Idle Time and Idle Men:**
+
+    -   The correlation coefficient between idle time and idle men is approximately 0.5591. This value indicates a moderate positive correlation between idle time and idle men. It suggests that when there is more idle time, there is a tendency for a higher number of idle men, and vice versa.
+
+2.  **Idle Time and Actual Productivity:**
+
+    -   The correlation coefficient between idle time and actual productivity is approximately -0.0809. This value suggests a very weak negative correlation between idle time and actual productivity. While there is a negative association, it is not strong, implying that the increase in idle time is only slightly associated with a decrease in productivity.
+
+3.  **Idle Men and Actual Productivity:**
+
+    -   The correlation coefficient between idle men and actual productivity is approximately -0.1817. This value indicates a weak negative correlation between idle men and actual productivity. It suggests that higher numbers of idle men are slightly associated with lower actual productivity.
+
+### Visualization
+
+```{r}
+# Scatter plot of idle time vs. productivity
+plot(garment_prod$idle_time, garment_prod$actual_productivity, 
+     xlab = "Idle Time", ylab = "Actual Productivity", 
+     main = "Idle Time vs. Productivity")
+
+```
+
+The graph shows that there is a negative correlation between idle time and productivity. This means that as idle time increases, productivity decreases. This is logical, as idle time is time that is not being used to produce garments.
+
+There are a number of possible explanations for this negative correlation. One possibility is that idle time is caused by factors that also reduce productivity, such as machine breakdowns or employee absenteeism. Another possibility is that idle time itself disrupts the flow of work and makes it more difficult for employees to be productive.
+
+Whatever the reason, the graph suggests that reducing idle time is a good way to improve productivity. This can be done by addressing the root causes of idle time, such as improving machine reliability or reducing absenteeism. It can also be done by implementing processes that minimize the disruption caused by idle time, such as by cross-training employees so that they can cover for each other when needed.
+
+Here are some specific interpretations of the graph:
+
+-   **Each percentage point increase in idle time is associated with a decrease in productivity of approximately 0.2 percentage points.** This means that if idle time is reduced by 10 percentage points, productivity can be expected to increase by approximately 2 percentage points.
+
+-   **The most productive garment production facilities have idle time rates of below 20%.** This suggests that there is significant room for improvement in many facilities.
+
+-   **There are a few outliers in the data, with some facilities having idle time rates of over 50%.** These facilities may be experiencing significant problems that are reducing their productivity.
+
+Overall, the graph provides clear evidence that idle time is a major factor that affects garment productivity. Reducing idle time is a good way to improve productivity and profitability.
+
+```{r}
+# Scatter plot of idle men vs. productivity
+plot(garment_prod$idle_men, garment_prod$actual_productivity, 
+     xlab = "Idle Men", ylab = "Actual Productivity", 
+     main = "Idle Men vs. Productivity")
+```
+
+**Interpretation:**
+
+-   The overall model is statistically significant (low p-value), but the low R-squared values indicate that the model explains only a small proportion of the variability in actual_productivity.
+
+-   The coefficient for idle_men is statistically significant, suggesting that an increase in idle men is associated with a statistically significant decrease in actual_productivity.
+
+-   The coefficient for idle_time is not statistically significant, indicating that the model does not provide strong evidence of a significant relationship between idle_time and actual_productivity.
+
+### Correlation test
+
+To analyse this we perform correlation test for idle_time and idle_men individually, only for the dataset where idle_time is greater than 0.
+
+IDLE_TIME:
+
+```{r}
+# Filter for non-zero idle time 
+idle <- garment_prod %>% 
+  filter(idle_time > 0)
+```
+
+```{r}
+# Test relationship between idle time and productivity
+cor.test(idle$idle_time, idle$actual_productivity)
+```
+
+```{r}
+# Visualize the relationship
+ggplot(idle, aes(x = idle_time, y = actual_productivity)) + 
+  geom_point() +
+  geom_smooth(method="lm")
+```
+
+Here are some key interpretations from the idle time vs productivity scatter plot:
+
+1.  We see the expected negative correlation between idle time and productivity - as idle time increases, productivity decreases. This is evidenced by the downward sloping linear regression line.
+
+2.  However, the relationship is quite scattered rather than tightly fitted. Individual data points vary considerably in productivity for a given level of idle time.
+
+3.  This suggests factors beyond just idle time also influence productivity significantly. Two units with equal idle time can have very different productivity levels.
+
+4.  There are some clusters - a group of observations with low productivity despite almost no idle time implies other operational issues hurting productivity.
+
+5.  The marginal effect of idle time may diminish at very high levels, as the slope starts flattening. Some baseline inefficiency persists cutting capacity regardless of lost time.
+
+6.  Overall the variable productivity indicates complex factors at play. While minimizing idle time will help efficiency, it alone doesn't explain variability. Management will have to address training, resources, staffing etc. in tandem.
+
+In summary, the visualization conveys that curtailing idle time is likely necessary but not sufficient for boosting productivity. A multidimensional strategy is required targeting various production and workforce parameters simultaneously.
+
+IDLE_MEN:
+
+```{r}
+cor.test(idle$idle_men, idle$actual_productivity)
+```
+
+```{r}
+ggplot(idle, aes(x = idle_men, y = actual_productivity)) +
+  geom_point() +
+  geom_smooth(method="lm")
+```
+
+1.  We see the expected negative correlation where higher idle men is associated with lower productivity. The linear regression slope is downward.
+
+2.  The relationship appears fairly linear over the range of idle men values without obvious diminishing or increasing returns.
+
+3.  Each additional idle worker corresponds to a fixed drop in productivity on average. Management should minimize idle workers.
+
+4.  There is a cluster of low productivity values when few or no workers are idle. This indicates other operational factors also hurting productivity independent of idle workers.
+
+5.  The variability in productivity across units is only moderately explained by idle men levels based on the vertical spread for given idle counts. Tighter clustering would better validate the relationship.
+
+6.  The slope of the fitted line quantifies the productivity impact of each extra idle worker. A steeper slope would indicate more drastic efficiency declines from excess staff.
+
+    In summary, the visualization reveals both a clear negative correlation as expected and some nuances like unrelated productivity dips. It highlights the need to control idle workers but also improve other production processes.
+
+### Regression analysis
+
+```{r}
+# Fit a linear regression model
+model_idle <- lm(actual_productivity ~ idle_time + idle_men, data = garment_prod)
+
+# Display the summary of the regression model
+summary(model_idle)
+```
+
+**Interpretation:**
+
+-   The overall model is statistically significant (low p-value), but the low R-squared values indicate that the model explains only a small proportion of the variability in actual_productivity.
+
+-   The coefficient for idle_men is statistically significant, suggesting that an increase in idle men is associated with a statistically significant decrease in actual_productivity.
+
+-   The coefficient for idle_time is not statistically significant, indicating that the model does not provide strong evidence of a significant relationship between idle_time and actual_productivity.
+
+**Recommendations:**
+
+-   While the model is statistically significant, the small R-squared values suggest that factors beyond idle_time and idle_men may play a significant role in determining actual_productivity.
+
+-   The negative coefficient for idle_men suggests that efforts to reduce idle men may have a positive impact on productivity. Further investigation into the specific causes of idle time and strategies to minimize it could be beneficial.
+
+-   Consider exploring additional variables or more complex modeling techniques to improve the model's explanatory power.
+
+```{r}
+par(mfrow = c(2,2))
+# 1. Residuals vs Fitted Values
+plot(model_idle, which = 1)
+
+# 2. Normal Q-Q Plot
+plot(model_idle, which = 2)
+
+# 3. Scale-Location Plot (Square Root of Standardized Residuals vs Fitted Values)
+plot(model_idle, which = 3)
+
+# 4. Residuals vs Leverage
+plot(model_idle, which = 5)
+```
+
+```{r}
+anova(model_idle)
+```
+
+-   For **`idle_time`**, the p-value (0.00456) is less than the conventional significance level of 0.05. Therefore, there is enough evidence to reject the null hypothesis that there is no effect of **`idle_time`** on **`actual_productivity`** at the 0.05 significance level.
+
+-   For **`idle_men`**, the p-value (9.07e-09) is much less than 0.05. Therefore, there is strong evidence to reject the null hypothesis that there is no effect of **`idle_men`** on **`actual_productivity`** at the 0.05 significance level.
+
+-   The results suggest that both **`idle_time`** and **`idle_men`** have a statistically significant effect on **`actual_productivity`**. The evidence for the effect of **`idle_men`** is particularly strong.
+
+-   The small p-values indicate that the observed relationships are unlikely to be due to random chance, supporting the idea that there is a genuine association between the predictor variables and the response variable.
+
+### Potential productivity gain
+
+```{r}
+idle %>%
+  mutate(prod_gain = targeted_productivity - actual_productivity) %>% 
+  summarise(mean_gain = mean(prod_gain))
+```
+
+This output is calculating the potential average productivity gain if idle time was reduced to zero. Here are the key interpretations:
+
+1.  It first computes the difference between targeted and actual productivity for each observation with non-zero idle time. This gives the productivity gain still possible for that unit.
+
+2.  Taking the mean of these productivity gains across all observations tells us the average extra production possible if inefficiencies from idle issues were eliminated.
+
+3.  An average productivity gain of 0.19 is quite significant for a labor-intensive industry like garment manufacturing. It represents a 19% efficiency boost possibility.
+
+4.  This suggests management should actively target and minimize idle time and workers to extract more productivity towards targets. There is a big gap that strategic changes could help bridge.
+
+5.  Departments averaging higher potential gains should be prioritized for productivity interventions via training, incentives or automation.
+
+6.  After specific policies to reduce idle time, the average gain metric can keep being monitored over time to track if the gap is closing as expected.
+
+```{r}
+library(tidyverse)
+
+# Original linear model
+model_lm <- lm(actual_productivity ~ idle_time + idle_men, data = garment_prod)
+
+# Polynomial terms  
+model_poly <- lm(actual_productivity ~ poly(idle_time, 2) + poly(idle_men, 2),
+                 data = garment_prod)
+
+# Interaction term
+model_inter <- lm(actual_productivity ~ idle_time*idle_men, 
+                   data = garment_prod)
+
+# Compare model summaries
+summary(model_lm)
+summary(model_poly)
+summary(model_inter)
+
+# Log and polynomial models have higher R-squared
+# Continue evaluation with cross validation
+# Repeat with other transformations
+```
+
+```{r}
+
+model_t <- lm(actual_productivity ~ idle_men+idle_time+over_time+incentive, data = garment_prod)
+summary(model_t)
+```
+
+```{r}
+# Modified linear model with idle_time and idle_men
+fit_modified <- lm(actual_productivity ~ incentive + over_time + smv + idle_time + idle_men, data = garment_prod)
+
+# Display the summary of the modified model
+summary(fit_modified)
+
+```
